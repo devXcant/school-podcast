@@ -1,8 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import Course from '../../../models/Course';
-import Podcast from '../../../models/Podcast';
+import { supabase } from '../../../lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -21,43 +19,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await dbConnect();
-
     // Get lecturer's courses
-    const courses = await Course.find({ lecturer: session.user.id })
-      .populate('courseRep', 'name')
-      .sort({ createdAt: -1 });
+    const { data: courses, error: coursesError } = await supabase
+      .from('courses')
+      .select(`
+        *,
+        course_rep:users!courses_course_rep_fkey(name)
+      `)
+      .eq('lecturer', session.user.id)
+      .order('created_at', { ascending: false });
+
+    if (coursesError) throw coursesError;
 
     // Get total courses count
-    const totalCourses = courses.length;
+    const totalCourses = courses ? courses.length : 0;
 
     // Get course IDs
-    const courseIds = courses.map(course => course._id);
+    const courseIds = courses ? courses.map(course => course.id) : [];
 
     // Get lecturer's podcasts
-    const podcasts = await Podcast.find({
-      $or: [
-        { recordedBy: session.user.id },
-        { course: { $in: courseIds } }
-      ]
-    })
-      .populate('course', 'title code')
-      .sort({ createdAt: -1 });
+    const { data: podcasts, error: podcastsError } = await supabase
+      .from('podcasts')
+      .select(`
+        *,
+        course:courses(title, code)
+      `)
+      .or(`recorded_by.eq.${session.user.id},course_id.in.(${courseIds.join(',')})`)
+      .order('created_at', { ascending: false });
+
+    if (podcastsError) throw podcastsError;
 
     // Get total podcasts count
-    const totalPodcasts = podcasts.length;
+    const totalPodcasts = podcasts ? podcasts.length : 0;
 
-    // Get total students count
-    const totalStudents = courses.reduce((total, course) => {
-      return total + (Array.isArray(course.students) ? course.students.length : 0);
-    }, 0);
+    // Get total students count by checking enrollments
+    let totalStudents = 0;
+
+    if (courseIds.length > 0) {
+      const { count, error: studentsError } = await supabase
+        .from('user_courses')
+        .select('*', { count: 'exact', head: true })
+        .in('course_id', courseIds);
+
+      if (!studentsError) {
+        totalStudents = count || 0;
+      }
+    }
 
     return res.status(200).json({
       totalCourses,
       totalPodcasts,
       totalStudents,
-      recentPodcasts: podcasts.slice(0, 10),
-      courses,
+      recentPodcasts: podcasts ? podcasts.slice(0, 10) : [],
+      courses: courses || [],
     });
   } catch (error: any) {
     console.error('Error fetching lecturer stats:', error);

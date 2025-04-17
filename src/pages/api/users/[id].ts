@@ -1,8 +1,6 @@
-// pages/api/users/[id].ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import { supabase } from '../../../lib/supabase';
 import { UserRole } from '../../../types';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -17,20 +15,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ message: 'Permission denied' });
   }
 
-  await dbConnect();
-
   const { id } = req.query;
 
   // GET - Fetch user by ID
   if (req.method === 'GET') {
     try {
-      const user = await User.findById(id).select('-password');
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      if (!user) {
+      if (error) throw error;
+
+      if (!data) {
         return res.status(404).json({ message: 'User not found' });
       }
 
-      return res.status(200).json({ success: true, data: user });
+      return res.status(200).json({ success: true, data });
     } catch (error: any) {
       console.error('Error fetching user:', error);
       return res.status(500).json({ message: 'Error fetching user', error: error.message });
@@ -44,7 +46,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Check if email is already in use by another user
       if (email) {
-        const existingUser = await User.findOne({ email, _id: { $ne: id } });
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .neq('id', id)
+          .single();
+
         if (existingUser) {
           return res.status(400).json({ message: 'Email already in use' });
         }
@@ -61,17 +69,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updateData.role = role as UserRole;
       }
 
-      const user = await User.findByIdAndUpdate(
-        id,
-        updateData,
-        { new: true, runValidators: true }
-      ).select('-password');
+      const { data, error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
 
-      if (!user) {
+      if (error) throw error;
+
+      if (!data) {
         return res.status(404).json({ message: 'User not found' });
       }
 
-      return res.status(200).json({ success: true, data: user });
+      return res.status(200).json({ success: true, data });
     } catch (error: any) {
       console.error('Error updating user:', error);
       return res.status(500).json({ message: 'Error updating user', error: error.message });
@@ -86,11 +97,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(403).json({ message: 'Permission denied' });
       }
 
-      const user = await User.findByIdAndDelete(id);
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', id);
 
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
+      if (error) throw error;
 
       return res.status(200).json({ success: true, message: 'User deleted successfully' });
     } catch (error: any) {

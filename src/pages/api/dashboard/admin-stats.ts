@@ -1,9 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
-import Course from '../../../models/Course';
-import Podcast from '../../../models/Podcast';
+import { supabase } from '../../../lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -22,19 +19,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await dbConnect();
+    // Get total counts using Supabase
+    const { count: totalUsers, error: usersError } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
 
-    // Get total counts
-    const totalUsers = await User.countDocuments();
-    const totalCourses = await Course.countDocuments();
-    const totalPodcasts = await Podcast.countDocuments();
+    if (usersError) throw usersError;
+
+    const { count: totalCourses, error: coursesError } = await supabase
+      .from('courses')
+      .select('*', { count: 'exact', head: true });
+
+    if (coursesError) throw coursesError;
+
+    const { count: totalPodcasts, error: podcastsError } = await supabase
+      .from('podcasts')
+      .select('*', { count: 'exact', head: true });
+
+    if (podcastsError) throw podcastsError;
 
     // Get recent podcasts
-    const recentPodcasts = await Podcast.find()
-      .populate('course', 'title code')
-      .populate('recordedBy', 'name')
-      .sort({ createdAt: -1 })
+    const { data: recentPodcasts, error: recentError } = await supabase
+      .from('podcasts')
+      .select(`
+        *,
+        course:courses(title, code),
+        recorded_by:users(name)
+      `)
+      .order('created_at', { ascending: false })
       .limit(10);
+
+    if (recentError) throw recentError;
 
     return res.status(200).json({
       totalUsers,

@@ -1,8 +1,6 @@
-// pages/api/users/index.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import { supabase } from '../../../lib/supabase';
 import { UserRole } from '../../../types';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -17,42 +15,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ message: 'Permission denied' });
   }
 
-  await dbConnect();
-
   // GET - Fetch users (with filtering)
   if (req.method === 'GET') {
     try {
       const { role, department, search } = req.query;
 
-      let query: any = {};
+      let query = supabase.from('users').select('*');
 
       // Filter by role(s)
       if (role) {
         if (typeof role === 'string' && role.includes(',')) {
-          query.role = { $in: role.split(',') };
+          query = query.in('role', role.split(','));
         } else {
-          query.role = role;
+          query = query.eq('role', role);
         }
       }
 
       // Filter by department
       if (department) {
-        query.department = department;
+        query = query.eq('department', department);
       }
 
       // Search by name or email
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
-        ];
+      if (search && typeof search === 'string') {
+        query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
       }
 
-      const users = await User.find(query)
-        .select('-password')
-        .sort({ createdAt: -1 });
+      const { data, error } = await query.order('created_at', { ascending: false });
 
-      return res.status(200).json({ success: true, data: users });
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, data });
     } catch (error: any) {
       console.error('Error fetching users:', error);
       return res.status(500).json({ message: 'Error fetching users', error: error.message });
@@ -65,29 +58,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { name, email, password, role, department } = req.body;
 
       // Check if user already exists
-      const userExists = await User.findOne({ email });
-      if (userExists) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (existingUser) {
         return res.status(400).json({ message: 'User already exists' });
       }
 
-      // Create new user
-      const user = await User.create({
-        name,
+      // Create user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email,
         password,
-        role: role as UserRole || 'student',
-        department: department || '',
+        email_confirm: true,
       });
+
+      if (authError || !authData.user) {
+        throw new Error(authError?.message || 'Failed to create user');
+      }
+
+      // Create user profile in the database
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .insert([{
+          id: authData.user.id,
+          name,
+          email,
+          role: role as UserRole || 'student',
+          department: department || '',
+        }])
+        .select()
+        .single();
+
+      if (userError) {
+        throw new Error(userError.message);
+      }
 
       return res.status(201).json({
         success: true,
-        data: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          department: user.department,
-        }
+        data: userData
       });
     } catch (error: any) {
       console.error('Error creating user:', error);

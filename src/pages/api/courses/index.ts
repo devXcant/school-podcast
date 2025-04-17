@@ -1,9 +1,6 @@
-// pages/api/courses/index.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import Course from '../../../models/Course';
-import User from '../../../models/User';
+import { supabase } from '../../../lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await getSession({ req });
@@ -12,36 +9,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  await dbConnect();
-
   // GET - Fetch all courses (with filtering)
   if (req.method === 'GET') {
     try {
       const { department, lecturer } = req.query;
 
-      let query: any = {};
+      let query = supabase
+        .from('courses')
+        .select(`
+          *,
+          lecturer:users!courses_lecturer_fkey(*),
+          course_rep:users!courses_course_rep_fkey(*),
+          podcasts(*)
+        `);
 
       if (department) {
-        query.department = department;
+        query = query.eq('department', department);
       }
 
       if (lecturer) {
-        query.lecturer = lecturer;
+        query = query.eq('lecturer', lecturer);
       }
 
       // If user is a student, only return courses they are enrolled in
       if (session.user.role === 'student') {
-        const user = await User.findById(session.user.id);
-        const coursesIds = user.courses;
-        query._id = { $in: coursesIds };
+        const { data: userCourses } = await supabase
+          .from('user_courses')
+          .select('course_id')
+          .eq('user_id', session.user.id);
+
+        if (userCourses && userCourses.length > 0) {
+          const courseIds = userCourses.map(uc => uc.course_id);
+          query = query.in('id', courseIds);
+        } else {
+          return res.status(200).json({ success: true, data: [] });
+        }
       }
 
-      const courses = await Course.find(query)
-        .populate('lecturer', 'name email')
-        .populate('courseRep', 'name email')
-        .sort({ createdAt: -1 });
+      const { data, error } = await query.order('created_at', { ascending: false });
 
-      return res.status(200).json({ success: true, data: courses });
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, data });
     } catch (error: any) {
       console.error('Error fetching courses:', error);
       return res.status(500).json({ message: 'Error fetching courses', error: error.message });
@@ -59,36 +68,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { code, title, description, lecturer, courseRep, students } = req.body;
 
       // Create course
-      const course = await Course.create({
-        code,
-        title,
-        description,
-        lecturer: lecturer || session.user.id, // Default to current user if lecturer not specified
-        courseRep,
-        students: students || [],
-      });
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .insert([{
+          code,
+          title,
+          description,
+          lecturer: lecturer || session.user.id,
+          course_rep: courseRep || null,
+        }])
+        .select()
+        .single();
 
-      // Add course to students' course list
+      if (courseError) throw courseError;
+
+      // Add students to the course
       if (students && students.length > 0) {
-        await User.updateMany(
-          { _id: { $in: students } },
-          { $push: { courses: course._id } }
-        );
-      }
+        const userCourses = students.map(studentId => ({
+          user_id: studentId,
+          course_id: course.id,
+        }));
 
-      // Add course to lecturer's course list
-      const lecturerId = lecturer || session.user.id;
-      await User.findByIdAndUpdate(
-        lecturerId,
-        { $push: { courses: course._id } }
-      );
+        const { error: enrollmentError } = await supabase
+          .from('user_courses')
+          .insert(userCourses);
 
-      // Add course to course rep's course list if assigned
-      if (courseRep) {
-        await User.findByIdAndUpdate(
-          courseRep,
-          { $push: { courses: course._id } }
-        );
+        if (enrollmentError) throw enrollmentError;
       }
 
       return res.status(201).json({

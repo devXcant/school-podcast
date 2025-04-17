@@ -1,9 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
-import Course from '../../../models/Course';
-import Podcast from '../../../models/Podcast';
+import { supabase } from '../../../lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -22,29 +19,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await dbConnect();
+    // Get student's enrolled courses
+    const { data: enrollments, error: enrollmentsError } = await supabase
+      .from('user_courses')
+      .select('course_id')
+      .eq('user_id', session.user.id);
 
-    // Get student's profile with enrolled courses
-    const student = await User.findById(session.user.id);
-
-    // Get student's courses
-    const courses = await Course.find({ _id: { $in: student.courses } })
-      .populate('lecturer', 'name')
-      .populate('courseRep', 'name')
-      .sort({ createdAt: -1 });
-
-    // Get total courses count
-    const totalCourses = courses.length;
+    if (enrollmentsError) throw enrollmentsError;
 
     // Get course IDs
-    const courseIds = courses.map(course => course._id);
+    const courseIds = enrollments ? enrollments.map(e => e.course_id) : [];
+
+    // Get total courses count
+    const totalCourses = courseIds.length;
+
+    // Get student's courses with details
+    let courses = [];
+
+    if (courseIds.length > 0) {
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('courses')
+        .select(`
+          *,
+          lecturer:users!courses_lecturer_fkey(name),
+          course_rep:users!courses_course_rep_fkey(name),
+          podcasts(*)
+        `)
+        .in('id', courseIds)
+        .order('created_at', { ascending: false });
+
+      if (coursesError) throw coursesError;
+
+      courses = coursesData || [];
+    }
 
     // Get recent podcasts from enrolled courses
-    const recentPodcasts = await Podcast.find({ course: { $in: courseIds } })
-      .populate('course', 'title code')
-      .populate('recordedBy', 'name')
-      .sort({ createdAt: -1 })
-      .limit(10);
+    let recentPodcasts = [];
+
+    if (courseIds.length > 0) {
+      const { data: podcastsData, error: podcastsError } = await supabase
+        .from('podcasts')
+        .select(`
+          *,
+          course:courses(title, code),
+          recorded_by:users(name)
+        `)
+        .in('course_id', courseIds)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (podcastsError) throw podcastsError;
+
+      recentPodcasts = podcastsData || [];
+    }
 
     return res.status(200).json({
       totalCourses,

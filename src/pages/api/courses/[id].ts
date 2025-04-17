@@ -1,10 +1,6 @@
-// pages/api/courses/[id].ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import dbConnect from '../../../lib/mongodb';
-import Course from '../../../models/Course';
-import User from '../../../models/User';
-import Podcast from '../../../models/Podcast';
+import { supabase } from '../../../lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await getSession({ req });
@@ -13,21 +9,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  await dbConnect();
-
   const { id } = req.query;
 
   // GET - Fetch course by ID
   if (req.method === 'GET') {
     try {
-      const course = await Course.findById(id)
-        .populate('lecturer', 'name email')
-        .populate('courseRep', 'name email')
-        .populate({
-          path: 'podcasts',
-          select: 'title description fileUrl duration viewCount createdAt',
-          options: { sort: { createdAt: -1 } }
-        });
+      const { data: course, error } = await supabase
+        .from('courses')
+        .select(`
+          *,
+          lecturer:users!courses_lecturer_fkey(*),
+          course_rep:users!courses_course_rep_fkey(*),
+          podcasts(*)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
 
       if (!course) {
         return res.status(404).json({ message: 'Course not found' });
@@ -35,10 +33,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Check if user has access to this course
       if (session.user.role === 'student') {
-        const user = await User.findById(session.user.id);
-        if (!user.courses.includes(course._id)) {
+        const { data: enrollment } = await supabase
+          .from('user_courses')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('course_id', id)
+          .single();
+
+        if (!enrollment) {
           return res.status(403).json({ message: 'Access denied to this course' });
         }
+      }
+
+      // Get enrolled students
+      const { data: enrollments } = await supabase
+        .from('user_courses')
+        .select('user_id')
+        .eq('course_id', id);
+
+      const studentIds = enrollments ? enrollments.map(e => e.user_id) : [];
+
+      if (studentIds.length > 0) {
+        const { data: students } = await supabase
+          .from('users')
+          .select('id, name, email, role')
+          .in('id', studentIds);
+
+        course.students = students || [];
+      } else {
+        course.students = [];
       }
 
       return res.status(200).json({ success: true, data: course });
@@ -51,35 +74,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // PUT - Update course
   if (req.method === 'PUT') {
     try {
-      const course = await Course.findById(id);
+      // Check if course exists
+      const { data: existingCourse } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      if (!course) {
+      if (!existingCourse) {
         return res.status(404).json({ message: 'Course not found' });
       }
 
-      // Check permissions (only admin, course lecturer, or IT admin can update)
-      if (
-        session.user.role !== 'admin' &&
-        course.lecturer.toString() !== session.user.id
-      ) {
+      // Check permissions
+      const isAdmin = session.user.role === 'admin';
+      const isLecturer = existingCourse.lecturer === session.user.id;
+
+      if (!isAdmin && !isLecturer) {
         return res.status(403).json({ message: 'Permission denied' });
       }
 
       const { code, title, description, lecturer, courseRep, students } = req.body;
 
       // Update course
-      const updatedCourse = await Course.findByIdAndUpdate(
-        id,
-        {
+      const { data: updatedCourse, error: updateError } = await supabase
+        .from('courses')
+        .update({
           code,
           title,
           description,
           lecturer,
-          courseRep,
-          students,
-        },
-        { new: true, runValidators: true }
-      );
+          course_rep: courseRep,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Update enrolled students if provided
+      if (students) {
+        // First, remove all existing enrollments
+        await supabase
+          .from('user_courses')
+          .delete()
+          .eq('course_id', id);
+
+        // Then add new enrollments
+        if (students.length > 0) {
+          const userCourses = students.map(studentId => ({
+            user_id: studentId,
+            course_id: id,
+          }));
+
+          await supabase
+            .from('user_courses')
+            .insert(userCourses);
+        }
+      }
 
       return res.status(200).json({
         success: true,
@@ -99,23 +150,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(403).json({ message: 'Permission denied' });
       }
 
-      const course = await Course.findById(id);
+      // Check if course exists
+      const { data: existingCourse } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      if (!course) {
+      if (!existingCourse) {
         return res.status(404).json({ message: 'Course not found' });
       }
 
-      // Remove course from users
-      await User.updateMany(
-        { courses: course._id },
-        { $pull: { courses: course._id } }
-      );
+      // Get podcast storage paths for deletion
+      const { data: podcasts } = await supabase
+        .from('podcasts')
+        .select('storage_path')
+        .eq('course_id', id);
 
-      // Delete all podcasts associated with the course
-      await Podcast.deleteMany({ course: course._id });
+      // Delete course (cascades to enrollments and podcasts in DB)
+      const { error: deleteError } = await supabase
+        .from('courses')
+        .delete()
+        .eq('id', id);
 
-      // Delete the course
-      await Course.findByIdAndDelete(id);
+      if (deleteError) throw deleteError;
+
+      // Delete podcast files from storage
+      if (podcasts && podcasts.length > 0) {
+        const storagePaths = podcasts.map(p => p.storage_path);
+        await supabase.storage.from('podcasts').remove(storagePaths);
+      }
 
       return res.status(200).json({
         success: true,

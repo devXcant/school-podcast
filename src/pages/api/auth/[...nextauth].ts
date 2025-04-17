@@ -1,7 +1,7 @@
+// pages/api/auth/[...nextauth].ts
 import NextAuth, { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import dbConnect from '../../../lib/mongodb';
-import User from '../../../models/User';
+import { supabase } from '../../../lib/supabase';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,19 +16,32 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password required');
         }
 
-        await dbConnect();
+        // Authenticate with Supabase Auth
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: credentials.email,
+          password: credentials.password,
+        });
 
-        const user = await User.findOne({ email: credentials.email }).select('+password');
-
-        if (!user || !(await user.comparePassword(credentials.password))) {
+        if (error || !data.user) {
           throw new Error('Invalid email or password');
         }
 
+        // Get user profile data
+        const { data: profileData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        if (!profileData) {
+          throw new Error('User profile not found');
+        }
+
         return {
-          id: user._id.toString(),
-          email: user.email,
-          name: user.name,
-          role: user.role,
+          id: data.user.id,
+          email: data.user.email,
+          name: profileData.name,
+          role: profileData.role,
         };
       }
     })

@@ -1,23 +1,10 @@
-// pages/api/podcasts/upload.ts
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
 import { IncomingForm } from 'formidable';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import dbConnect from '../../../lib/mongodb';
-import Podcast from '../../../models/Podcast';
-import Course from '../../../models/Course';
-
-// Configure AWS S3
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-  },
-});
+import { supabase } from '../../../lib/supabase';
 
 export const config = {
   api: {
@@ -46,8 +33,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    await dbConnect();
-
     // Parse the form data
     const form = new IncomingForm({
       keepExtensions: true,
@@ -70,54 +55,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Check if course exists
-    const course = await Course.findById(courseId);
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('*')
+      .eq('id', courseId[0])
+      .single();
 
-    if (!course) {
+    if (courseError || !course) {
       return res.status(404).json({ message: 'Course not found' });
     }
 
     // Check permission for the specific course
-    const isCourseOwner = isLecturer && course.lecturer.toString() === session.user.id;
-    const isAssignedCourseRep = isCourseRep && course.courseRep && course.courseRep.toString() === session.user.id;
+    const isCourseOwner = isLecturer && course.lecturer === session.user.id;
+    const isAssignedCourseRep = isCourseRep && course.course_rep === session.user.id;
 
     if (!isAdmin && !isCourseOwner && !isAssignedCourseRep) {
-      return res.status(403).json({ message: 'Permission denied for this course' });
+        return res.status(403).json({ message: 'Permission denied for this course' });
+        }
+
+    // Upload file to Supabase Storage
+    const fileContent = fs.readFileSync(file.filepath);
+    const fileExtension = path.extname(file.originalFilename || '');
+    const fileName = `${uuidv4()}${fileExtension}`;
+    const filePath = `podcasts/${courseId[0]}/${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('podcasts')
+      .upload(filePath, fileContent, {
+        contentType: file.mimetype,
+        cacheControl: '3600',
+      });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
     }
 
-    // Upload file to S3
-    const fileId = uuidv4();
-    const fileExtension = path.extname(file.originalFilename || '');
-    const fileName = `podcasts/${courseId}/${fileId}${fileExtension}`;
+    // Get public URL for the file
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('podcasts')
+      .getPublicUrl(filePath);
 
-    const fileContent = fs.readFileSync(file.filepath);
-
-    const s3Params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: fileName,
-      Body: fileContent,
-      ContentType: file.mimetype,
-    };
-
-    await s3Client.send(new PutObjectCommand(s3Params));
-
-    // Get the file URL
-    const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+    const fileUrl = publicUrlData.publicUrl;
 
     // Create podcast record in database
-    const podcast = await Podcast.create({
-      title: title[0],
-      description: description ? description[0] : '',
-      course: courseId[0],
-      recordedBy: session.user.id,
-      fileUrl,
-      duration: duration ? parseInt(duration[0]) : 0,
-      isLive: false,
-    });
+    const { data: podcast, error: podcastError } = await supabase
+      .from('podcasts')
+      .insert([{
+        title: title[0],
+        description: description ? description[0] : '',
+        course_id: courseId[0],
+        recorded_by: session.user.id,
+        file_url: fileUrl,
+        storage_path: filePath,
+        duration: duration ? parseInt(duration[0]) : 0,
+        is_live: false,
+        view_count: 0,
+      }])
+      .select()
+      .single();
 
-    // Add podcast to course
-    await Course.findByIdAndUpdate(courseId[0], {
-      $push: { podcasts: podcast._id },
-    });
+    if (podcastError) {
+      throw new Error(podcastError.message);
+    }
 
     return res.status(201).json({
       success: true,

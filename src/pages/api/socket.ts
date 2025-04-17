@@ -1,8 +1,8 @@
-// pages/api/socket.ts
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
+import { supabase } from '../../lib/supabase';
 
 // Store for active socket connections
 interface SocketConnection {
@@ -38,6 +38,18 @@ const initSocketServer = (req: NextApiRequest, res: NextApiResponse) => {
         }
 
         const userId = session.user.id;
+
+        // Verify user exists in Supabase
+        const { data: user, error } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', userId)
+          .single();
+
+        if (error || !user) {
+          socket.disconnect();
+          return;
+        }
 
         // Store connection
         activeConnections.push({ userId, socket });
