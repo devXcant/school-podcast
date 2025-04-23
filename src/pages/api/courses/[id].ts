@@ -121,7 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // Then add new enrollments
         if (students.length > 0) {
-          const userCourses = students.map(studentId => ({
+          const userCourses = students.map((studentId: any) => ({
             user_id: studentId,
             course_id: id,
           }));

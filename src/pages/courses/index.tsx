@@ -1,12 +1,13 @@
+// pages/courses/index.tsx
 import { useState, useEffect } from 'react';
 import { GetServerSideProps } from 'next';
 import { getSession, useSession } from 'next-auth/react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
-import Button from '../../components/ui/Button';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import { ICourse } from '../../types';
+import Button from '@/src/components/ui/Button';
 
 const CoursesPage = () => {
   const { data: session } = useSession();
@@ -100,8 +101,8 @@ const CoursesPage = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {courses.map((course) => (
             <Link
-              href={`/courses/${course._id}`}
-              key={course._id.toString()}
+              href={`/courses/${course.id || course._id}`}
+              key={(course.id || course._id || '').toString()}
               className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
             >
               <div className="p-4">
@@ -113,7 +114,7 @@ const CoursesPage = () => {
               </div>
               <div className="bg-gray-50 px-4 py-3 flex justify-between items-center">
                 <span className="text-xs text-gray-500">
-                  Lecturer: {typeof course.lecturer === 'object' ? course.lecturer.name : 'Unknown'}
+                  Lecturer: {typeof course.lecturer === 'object' && course.lecturer ? course.lecturer.name : 'Unknown'}
                 </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800">
                   {Array.isArray(course.podcasts) ? course.podcasts.length : 0} podcasts

@@ -35,23 +35,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const repCourseIds = repCourses ? repCourses.map(c => c.id) : [];
 
-    // Combine both sets of course IDs
-    const courseIds = [...new Set([...enrolledCourseIds, ...repCourseIds])];
+    // Combine both sets of course IDs without using Set spreading
+    const uniqueCourseIds: string[] = [];
+
+    // Add enrolled course IDs
+    enrolledCourseIds.forEach(id => {
+      if (!uniqueCourseIds.includes(id)) {
+        uniqueCourseIds.push(id);
+      }
+    });
+
+    // Add rep course IDs
+    repCourseIds.forEach(id => {
+      if (!uniqueCourseIds.includes(id)) {
+        uniqueCourseIds.push(id);
+      }
+    });
 
     // Get total courses count
-    const totalCourses = courseIds.length;
+    const totalCourses = uniqueCourseIds.length;
 
     // Get courses with details
     let courses = [];
 
-    if (courseIds.length > 0) {
+    if (uniqueCourseIds.length > 0) {
       const { data: coursesData } = await supabase
         .from('courses')
         .select(`
           *,
           lecturer:users!courses_lecturer_fkey(name)
         `)
-        .in('id', courseIds)
+        .in('id', uniqueCourseIds)
         .order('created_at', { ascending: false });
 
       courses = coursesData || [];

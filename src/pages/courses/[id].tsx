@@ -1,4 +1,4 @@
-// pages/courses/[id].tsx (continued)
+// pages/courses/[id].tsx
 import { useState, useEffect } from 'react';
 import { GetServerSideProps } from 'next';
 import { getSession, useSession } from 'next-auth/react';
@@ -7,7 +7,6 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../components/layout/Layout';
 import PodcastList from '../../components/podcast/PodcastList';
-import Button from '../../components/ui/Button';
 import {
   MicrophoneIcon,
   ArrowUpTrayIcon,
@@ -16,8 +15,9 @@ import {
   UserGroupIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
-import { ICourse, IPodcast } from '../../types';
-import Modal from '../../components/ui/Modal';
+import { ICourse, IPodcast, IUser } from '../../types';
+import Button from '@/src/components/ui/Button';
+import Modal from '@/src/components/ui/Modal';
 
 const CourseDetailPage = () => {
   const router = useRouter();
@@ -29,6 +29,11 @@ const CourseDetailPage = () => {
   const [error, setError] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Type guards
+  const isUser = (obj: any): obj is IUser => {
+    return obj && typeof obj === 'object' && 'name' in obj;
+  };
 
   useEffect(() => {
     if (id) {
@@ -63,7 +68,10 @@ const CourseDetailPage = () => {
 
     try {
       setIsDeleting(true);
-      const response = await fetch(`/api/courses/${course._id}`, {
+      // Use either id or _id depending on what's available
+      const courseId = course.id || course._id;
+
+      const response = await fetch(`/api/courses/${courseId}`, {
         method: 'DELETE',
       });
 
@@ -91,7 +99,8 @@ const CourseDetailPage = () => {
     const isAdmin = session.user.role === 'admin';
     const isLecturer = session.user.role === 'lecturer' &&
       typeof course.lecturer === 'object' &&
-      course.lecturer._id === session.user.id;
+      isUser(course.lecturer) &&
+      (course.lecturer.id === session.user.id || course.lecturer._id === session.user.id);
 
     return isAdmin || isLecturer;
   };
@@ -103,10 +112,19 @@ const CourseDetailPage = () => {
     const isAdmin = session.user.role === 'admin';
     const isLecturer = session.user.role === 'lecturer' &&
       typeof course.lecturer === 'object' &&
-      course.lecturer._id === session.user.id;
+      isUser(course.lecturer) &&
+      (course.lecturer.id === session.user.id || course.lecturer._id === session.user.id);
+
+    // Support both course_rep and courseRep properties
+    const courseRepId =
+      (course.course_rep && typeof course.course_rep === 'object' && isUser(course.course_rep))
+        ? course.course_rep.id || course.course_rep._id
+        : (course.courseRep && typeof course.courseRep === 'object' && isUser(course.courseRep))
+          ? course.courseRep.id || course.courseRep._id
+          : null;
+
     const isCourseRep = session.user.role === 'course_rep' &&
-      typeof course.courseRep === 'object' &&
-      course.courseRep._id === session.user.id;
+      courseRepId === session.user.id;
 
     return isAdmin || isLecturer || isCourseRep;
   };
@@ -158,7 +176,7 @@ const CourseDetailPage = () => {
 
             {canEdit() && (
               <div className="flex space-x-2">
-                <Link href={`/dashboard/manage/courses/edit/${course._id}`}>
+                <Link href={`/dashboard/manage/courses/edit/${course.id || course._id}`}>
                   <Button variant="outline" size="sm">
                     <PencilIcon className="h-4 w-4 mr-1" />
                     Edit
@@ -187,7 +205,7 @@ const CourseDetailPage = () => {
                 Lecturer
               </h3>
               <p className="text-gray-700">
-                {typeof course.lecturer === 'object' ? course.lecturer.name : 'Unknown'}
+                {isUser(course.lecturer) ? course.lecturer.name : 'Unknown'}
               </p>
             </div>
 
@@ -204,13 +222,13 @@ const CourseDetailPage = () => {
 
           {canRecord() && (
             <div className="flex space-x-2 mt-6">
-              <Link href={`/podcasts/record?course=${course._id}`}>
+              <Link href={`/podcasts/record?course=${course.id || course._id}`}>
                 <Button>
                   <MicrophoneIcon className="h-5 w-5 mr-1" />
                   Record Session
                 </Button>
               </Link>
-              <Link href={`/podcasts/upload?course=${course._id}`}>
+              <Link href={`/podcasts/upload?course=${course.id || course._id}`}>
                 <Button variant="outline">
                   <ArrowUpTrayIcon className="h-5 w-5 mr-1" />
                   Upload Recording

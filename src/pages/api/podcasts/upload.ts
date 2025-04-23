@@ -1,10 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getSession } from 'next-auth/react';
-import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../../../lib/supabase';
+import { supabase, supabaseAdmin } from '../../../lib/supabase';
+import formidable from 'formidable';
 
 export const config = {
   api: {
@@ -23,7 +23,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: 'Unauthorized' });
   }
 
-  // Check if user has permission to upload
   const isAdmin = session.user.role === 'admin';
   const isLecturer = session.user.role === 'lecturer';
   const isCourseRep = session.user.role === 'course_rep';
@@ -33,53 +32,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Parse the form data
-    const form = new IncomingForm({
+    const form = formidable({
       keepExtensions: true,
-      multiples: false,
+      multiples: true,
     });
 
     const [fields, files] = await new Promise<[any, any]>((resolve, reject) => {
-      form.parse(req, (err, fields, files) => {
+      form.parse(req, (err: any, fields: any, files: any) => {
         if (err) reject(err);
         resolve([fields, files]);
       });
     });
 
-    const file = files.file[0];
+    const file = files.file[0] || files.file;
     const { title, description, course: courseId, duration } = fields;
 
-    // Validate required fields
     if (!title || !courseId || !file) {
       return res.status(400).json({ message: 'Title, course, and file are required' });
     }
 
-    // Check if course exists
-    const { data: course, error: courseError } = await supabase
+    const { data: course, error: courseError } = await supabaseAdmin
       .from('courses')
       .select('*')
-      .eq('id', courseId[0])
+      .eq('id', Array.isArray(courseId) ? courseId[0] : courseId)
       .single();
 
     if (courseError || !course) {
       return res.status(404).json({ message: 'Course not found' });
     }
 
-    // Check permission for the specific course
     const isCourseOwner = isLecturer && course.lecturer === session.user.id;
     const isAssignedCourseRep = isCourseRep && course.course_rep === session.user.id;
 
     if (!isAdmin && !isCourseOwner && !isAssignedCourseRep) {
         return res.status(403).json({ message: 'Permission denied for this course' });
-        }
+    }
 
-    // Upload file to Supabase Storage
     const fileContent = fs.readFileSync(file.filepath);
     const fileExtension = path.extname(file.originalFilename || '');
     const fileName = `${uuidv4()}${fileExtension}`;
-    const filePath = `podcasts/${courseId[0]}/${fileName}`;
+    const filePath = `podcasts/${Array.isArray(courseId) ? courseId[0] : courseId}/${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await supabase
+    const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage
       .from('podcasts')
       .upload(filePath, fileContent, {
@@ -91,25 +85,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error(uploadError.message);
     }
 
-    // Get public URL for the file
-    const { data: publicUrlData } = supabase
+    const { data: publicUrlData } = supabaseAdmin
       .storage
       .from('podcasts')
       .getPublicUrl(filePath);
 
     const fileUrl = publicUrlData.publicUrl;
 
-    // Create podcast record in database
-    const { data: podcast, error: podcastError } = await supabase
+    const { data: podcast, error: podcastError } = await supabaseAdmin
       .from('podcasts')
       .insert([{
-        title: title[0],
-        description: description ? description[0] : '',
-        course_id: courseId[0],
+        title: Array.isArray(title) ? title[0] : title,
+        description: description ? (Array.isArray(description) ? description[0] : description) : '',
+        course_id: Array.isArray(courseId) ? courseId[0] : courseId,
         recorded_by: session.user.id,
         file_url: fileUrl,
         storage_path: filePath,
-        duration: duration ? parseInt(duration[0]) : 0,
+        duration: duration ? parseInt(Array.isArray(duration) ? duration[0] : duration) : 0,
         is_live: false,
         view_count: 0,
       }])

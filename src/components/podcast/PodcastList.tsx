@@ -1,3 +1,4 @@
+// components/podcast/PodcastList.tsx
 import React from 'react';
 import { IPodcast } from '../../types';
 import PodcastCard from './PodcastCard';
@@ -52,7 +53,10 @@ const PodcastList: React.FC<PodcastListProps> = ({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {podcasts.map((podcast) => (
-        <PodcastCard key={podcast._id.toString()} podcast={podcast} />
+        <PodcastCard
+          key={(podcast.id || podcast._id || '').toString()}
+          podcast={podcast}
+        />
       ))}
     </div>
   );

@@ -1,3 +1,4 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   env: {
@@ -10,6 +11,8 @@ const nextConfig = {
     AWS_BUCKET_NAME: process.env.AWS_BUCKET_NAME,
   },
   images: {
-    domains: ['localhost'],
+    domains: ["localhost"],
   },
 };
+
+module.exports = nextConfig;

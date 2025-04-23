@@ -6,10 +6,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/layout/Layout';
-import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
-import { ICourse } from '../../../types';
+
+import { ICourse, IUser } from '../../../types';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import Button from '@/src/components/ui/Button';
+import Modal from '@/src/components/ui/Modal';
 
 const CourseManagementPage = () => {
   const { data: session } = useSession();
@@ -20,6 +21,11 @@ const CourseManagementPage = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<ICourse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Type guard for IUser
+  const isUser = (obj: any): obj is IUser => {
+    return obj && typeof obj === 'object' && 'name' in obj;
+  };
 
   useEffect(() => {
     fetchCourses();
@@ -55,7 +61,8 @@ const CourseManagementPage = () => {
 
     try {
       setIsDeleting(true);
-      const response = await fetch(`/api/courses/${selectedCourse._id}`, {
+      const courseId = selectedCourse.id || selectedCourse._id;
+      const response = await fetch(`/api/courses/${courseId}`, {
         method: 'DELETE',
       });
 
@@ -89,9 +96,12 @@ const CourseManagementPage = () => {
     if (!session) return false;
 
     const isAdmin = session.user.role === 'admin';
-    const isLecturer = session.user.role === 'lecturer' &&
-      typeof course.lecturer === 'object' &&
-      course.lecturer._id === session.user.id;
+
+    // Check if the lecturer matches the current user
+    let isLecturer = false;
+    if (session.user.role === 'lecturer' && typeof course.lecturer === 'object' && isUser(course.lecturer)) {
+      isLecturer = (course.lecturer.id === session.user.id) || (course.lecturer._id === session.user.id);
+    }
 
     return isAdmin || isLecturer;
   };
@@ -147,12 +157,12 @@ const CourseManagementPage = () => {
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul role="list" className="divide-y divide-gray-200">
             {courses.map((course) => (
-              <li key={course._id.toString()}>
+              <li key={(course.id || course._id || '').toString()}>
                 <div className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-medium text-primary-600">
-                        <Link href={`/courses/${course._id}`} className="hover:underline">
+                        <Link href={`/courses/${course.id || course._id}`} className="hover:underline">
                           {course.title}
                         </Link>
                       </h3>
@@ -161,7 +171,7 @@ const CourseManagementPage = () => {
 
                     {canEditCourse(course) && (
                       <div className="flex space-x-2">
-                        <Link href={`/dashboard/manage/courses/edit/${course._id}`}>
+                        <Link href={`/dashboard/manage/courses/edit/${course.id || course._id}`}>
                           <Button variant="outline" size="sm">
                             <PencilIcon className="h-4 w-4 mr-1" />
                             Edit
@@ -185,7 +195,7 @@ const CourseManagementPage = () => {
                   <div className="mt-2 sm:flex sm:justify-between">
                     <div className="sm:flex">
                       <p className="flex items-center text-sm text-gray-500">
-                        Lecturer: {typeof course.lecturer === 'object' ? course.lecturer.name : 'Unknown'}
+                        Lecturer: {typeof course.lecturer === 'object' && isUser(course.lecturer) ? course.lecturer.name : 'Unknown'}
                       </p>
                       <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
                         {Array.isArray(course.students) ? course.students.length : 0} students

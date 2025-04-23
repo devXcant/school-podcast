@@ -11,48 +11,59 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({
-  children,
-  requireAuth = true,
-  allowedRoles = []
-}) => {
-  const { data: session, status } = useSession();
-  const router = useRouter();
+    children,
+    requireAuth = true,
+    allowedRoles = []
+  }) => {
+    const router = useRouter();
 
-  const isPublicRoute =
-    router.pathname === '/' ||
-    router.pathname === '/auth/login' ||
-    router.pathname === '/auth/register';
+    const isPublicRoute =
+      router.pathname === '/' ||
+      router.pathname === '/auth/login' ||
+      router.pathname === '/auth/register';
 
-  if (status === 'loading') {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-  }
-
-  if (requireAuth && !session && !isPublicRoute) {
-    router.push('/auth/login');
-    return null;
-  }
-
-  if (session && allowedRoles.length > 0 && !allowedRoles.includes(session.user.role)) {
-    router.push('/dashboard');
-    return null;
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <Header />
-
-      {session && !isPublicRoute ? (
-        <div className="flex h-[calc(100vh-64px)]">
-          <Sidebar />
-          <main className="flex-1 overflow-auto p-6">
-            {children}
-          </main>
+    // Only use session when needed
+    if (!requireAuth && isPublicRoute) {
+      return (
+        <div className="min-h-screen bg-gray-100">
+          <Header />
+          <main>{children}</main>
         </div>
-      ) : (
-        <main>{children}</main>
-      )}
-    </div>
-  );
-};
+      );
+    }
+
+    // Use session for protected routes
+    const { data: session, status } = useSession();
+
+    if (status === 'loading') {
+      return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    }
+
+    if (requireAuth && !session && !isPublicRoute) {
+      router.push('/auth/login');
+      return null;
+    }
+
+    if (session && allowedRoles.length > 0 && !allowedRoles.includes(session.user.role)) {
+      router.push('/dashboard');
+      return null;
+    }
+
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <Header />
+        {session && !isPublicRoute ? (
+          <div className="flex h-[calc(100vh-64px)]">
+            <Sidebar />
+            <main className="flex-1 overflow-auto p-6">
+              {children}
+            </main>
+          </div>
+        ) : (
+          <main>{children}</main>
+        )}
+      </div>
+    );
+  };
 
 export default Layout;

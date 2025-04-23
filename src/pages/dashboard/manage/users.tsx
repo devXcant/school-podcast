@@ -4,10 +4,11 @@ import { getSession } from 'next-auth/react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/layout/Layout';
-import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
-import Input from '../../../components/ui/Input';
+
 import { IUser, UserRole } from '../../../types';
+import Button from '@/src/components/ui/Button';
+import Modal from '@/src/components/ui/Modal';
+import Input from '@/src/components/ui/Input';
 
 const UserManagementPage = () => {
   const [users, setUsers] = useState<IUser[]>([]);
@@ -222,21 +223,21 @@ const UserManagementPage = () => {
           <Input
             label="Full Name"
             value={newUser.name}
-            onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+            onChange={(e: { target: { value: any; }; }) => setNewUser({ ...newUser, name: e.target.value })}
             required
           />
           <Input
             label="Email"
             type="email"
             value={newUser.email}
-            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+            onChange={(e:any) => setNewUser({ ...newUser, email: e.target.value })}
             required
           />
           <Input
             label="Password"
             type="password"
             value={newUser.password}
-            onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+            onChange={(e: { target: { value: any; }; }) => setNewUser({ ...newUser, password: e.target.value })}
             required
           />
           <div>
@@ -245,6 +246,7 @@ const UserManagementPage = () => {
             </label>
             <select
               value={newUser.role}
+              
               onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
               required
@@ -258,7 +260,7 @@ const UserManagementPage = () => {
           <Input
             label="Department"
             value={newUser.department}
-            onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
+            onChange={(e: { target: { value: any; }; }) => setNewUser({ ...newUser, department: e.target.value })}
           />
           <div className="flex justify-end space-x-3 pt-4">
             <Button
@@ -284,14 +286,14 @@ const UserManagementPage = () => {
             <Input
               label="Full Name"
               value={selectedUser.name}
-              onChange={(e) => setSelectedUser({ ...selectedUser, name: e.target.value })}
+              onChange={(e: { target: { value: any; }; }) => setSelectedUser({ ...selectedUser, name: e.target.value })}
               required
             />
             <Input
               label="Email"
               type="email"
               value={selectedUser.email}
-              onChange={(e) => setSelectedUser({ ...selectedUser, email: e.target.value })}
+              onChange={(e: { target: { value: any; }; }) => setSelectedUser({ ...selectedUser, email: e.target.value })}
               required
             />
             <div>
@@ -313,7 +315,7 @@ const UserManagementPage = () => {
             <Input
               label="Department"
               value={selectedUser.department || ''}
-              onChange={(e) => setSelectedUser({ ...selectedUser, department: e.target.value })}
+              onChange={(e: { target: { value: any; }; }) => setSelectedUser({ ...selectedUser, department: e.target.value })}
             />
             <div className="flex justify-end space-x-3 pt-4">
               <Button

@@ -6,9 +6,10 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../../../components/layout/Layout';
-import Button from '../../../../components/ui/Button';
-import Input from '../../../../components/ui/Input';
+
 import { IUser } from '../../../../types';
+import Input from '@/src/components/ui/Input';
+import Button from '@/src/components/ui/Button';
 
 const CreateCoursePage = () => {
   const { data: session } = useSession();
@@ -19,7 +20,8 @@ const CreateCoursePage = () => {
     title: '',
     description: '',
     lecturer: '',
-    courseRep: '',
+    courseRep: '', // MongoDB style
+    course_rep: '', // Supabase style
     students: [] as string[]
   });
 
@@ -70,7 +72,13 @@ const CreateCoursePage = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setCourseData({ ...courseData, [name]: value });
+
+    // When courseRep is updated, also update course_rep
+    if (name === 'courseRep') {
+      setCourseData({ ...courseData, courseRep: value, course_rep: value });
+    } else {
+      setCourseData({ ...courseData, [name]: value });
+    }
   };
 
   const handleStudentSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -109,7 +117,8 @@ const CreateCoursePage = () => {
       const data = await response.json();
 
       if (data.success) {
-        router.push(`/courses/${data.data._id}`);
+        const courseId = data.data.id || data.data._id;
+        router.push(`/courses/${courseId}`);
       } else {
         setError(data.message || 'Failed to create course');
       }
@@ -214,7 +223,10 @@ const CreateCoursePage = () => {
                 >
                   <option value="">Select a lecturer</option>
                   {lecturers.map((lecturer) => (
-                    <option key={lecturer._id.toString()} value={lecturer._id.toString()}>
+                    <option
+                      key={(lecturer.id || lecturer._id || '').toString()}
+                      value={(lecturer.id || lecturer._id || '').toString()}
+                    >
                       {lecturer.name} ({lecturer.email})
                     </option>
                   ))}
@@ -235,7 +247,10 @@ const CreateCoursePage = () => {
                   {students
                     .filter(student => student.role === 'course_rep')
                     .map((student) => (
-                      <option key={student._id.toString()} value={student._id.toString()}>
+                      <option
+                        key={(student.id || student._id || '').toString()}
+                        value={(student.id || student._id || '').toString()}
+                      >
                         {student.name} ({student.email})
                       </option>
                     ))}
@@ -255,7 +270,10 @@ const CreateCoursePage = () => {
                 size={5}
               >
                 {students.map((student) => (
-                  <option key={student._id.toString()} value={student._id.toString()}>
+                  <option
+                    key={(student.id || student._id || '').toString()}
+                    value={(student.id || student._id || '').toString()}
+                  >
                     {student.name} ({student.email}) - {student.role === 'course_rep' ? 'Course Rep' : 'Student'}
                   </option>
                 ))}
@@ -271,7 +289,7 @@ const CreateCoursePage = () => {
                   Cancel
                 </Button>
               </Link>
-              <Button
+              <Button variant="outline" 
                 type="submit"
                 isLoading={isSubmitting}
                 disabled={!courseData.code || !courseData.title || !courseData.lecturer}

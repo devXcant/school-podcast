@@ -6,7 +6,6 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
 import PodcastPlayer from '../../components/podcast/PodcastPlayer';
-import Button from '../../components/ui/Button';
 import { IPodcast } from '../../types';
 import {
   CalendarIcon,
@@ -17,7 +16,8 @@ import {
   TrashIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import Modal from '../../components/ui/Modal';
+import Button from '@/src/components/ui/Button';
+import Modal from '@/src/components/ui/Modal';
 
 const PodcastDetailPage = () => {
   const router = useRouter();

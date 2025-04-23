@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/layout/Layout';
 import PodcastList from '../../components/podcast/PodcastList';
-import Button from '../../components/ui/Button';
 import { MicrophoneIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 import { IPodcast } from '../../types';
+import Button from '@/src/components/ui/Button';
 
 const PodcastsPage = () => {
   const [podcasts, setPodcasts] = useState<IPodcast[]>([]);

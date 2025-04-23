@@ -1,13 +1,15 @@
+// components/podcast/UploadForm.tsx
 import React, { useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { ICourse } from '../../types';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+
 import {
   ArrowUpTrayIcon,
   DocumentIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
+import Input from '../ui/Input';
+import Button from '../ui/Button';
 
 interface UploadFormProps {
   onUploadComplete: (file: File, metadata: any) => void;
@@ -196,7 +198,10 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete, courses }) =>
           >
             <option value="">Select a course</option>
             {courses.map((course) => (
-              <option key={course._id.toString()} value={course._id.toString()}>
+              <option
+                key={(course.id || course._id || '').toString()}
+                value={(course.id || course._id || '').toString()}
+              >
                 {course.code} - {course.title}
               </option>
             ))}

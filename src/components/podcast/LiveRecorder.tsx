@@ -1,14 +1,16 @@
+// components/podcast/LiveRecorder.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { ICourse } from '../../types';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
+
 import {
   MicrophoneIcon,
   StopIcon,
   PauseIcon,
   PlayIcon
 } from '@heroicons/react/24/solid';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 
 interface LiveRecorderProps {
   onRecordingComplete: (audioBlob: Blob, metadata: any) => void;
@@ -159,7 +161,10 @@ const LiveRecorder: React.FC<LiveRecorderProps> = ({ onRecordingComplete, course
           >
             <option value="">Select a course</option>
             {courses.map((course) => (
-              <option key={course._id.toString()} value={course._id.toString()}>
+              <option
+                key={(course.id || course._id || '').toString()}
+                value={(course.id || course._id || '').toString()}
+              >
                 {course.code} - {course.title}
               </option>
             ))}
@@ -215,7 +220,8 @@ const LiveRecorder: React.FC<LiveRecorderProps> = ({ onRecordingComplete, course
           ) : (
             <Button
               onClick={startRecording}
-              variant="primary"
+                variant="primary"
+                className='bg-green-500'
             >
               <MicrophoneIcon className="h-5 w-5 mr-1" />
               Start Recording

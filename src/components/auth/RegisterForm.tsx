@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 
+
 const RegisterForm: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
