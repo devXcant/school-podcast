@@ -46,32 +46,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Special case for direct file access
-    if (podcast.file_url && podcast.file_url.startsWith('http')) {
-      // For files already with public URLs, redirect to the file
-      return res.redirect(podcast.file_url);
-    }
-
-    // For files stored in Supabase storage, use the storage_path
-    if (!podcast.storage_path) {
-      return res.status(404).json({ message: 'File path not found' });
-    }
-
-    // Handle range requests to support seeking in audio player
-    const range = req.headers.range;
-
-    if (!range) {
-      // If no range requested, get a signed URL and redirect
-      const { data: signedUrl } = await supabase
+    // FIXED: Always prioritize storage_path and use signed URLs
+    // This is the key change to fix the 400 Bad Request error
+    if (podcast.storage_path) {
+      // If storage_path exists, create a signed URL (works regardless of bucket privacy)
+      const { data: signedUrlData, error: signedUrlError } = await supabase
         .storage
         .from('podcasts')
         .createSignedUrl(podcast.storage_path, 3600); // 1 hour expiry
 
-      if (signedUrl) {
-        return res.redirect(signedUrl.signedUrl);
-      } else {
-        return res.status(404).json({ message: 'File not found in storage' });
+      if (signedUrlError) {
+        console.error('Error creating signed URL:', signedUrlError);
+        return res.status(500).json({ message: 'Error creating signed URL' });
       }
+
+      if (signedUrlData && signedUrlData.signedUrl) {
+        // Handle range requests
+        const range = req.headers.range;
+        if (!range) {
+          // If no range header, redirect to signed URL
+          return res.redirect(signedUrlData.signedUrl);
+        }
+      }
+    } else if (podcast.file_url && podcast.file_url.startsWith('http')) {
+      // Fallback for legacy entries without storage_path
+      console.warn('Using legacy file_url without storage_path for podcast:', podcast.id);
+
+      // Try to extract a valid storage path from file_url
+      try {
+        const url = new URL(podcast.file_url);
+        const pathParts = url.pathname.split('/');
+        // Remove duplicated "podcasts/" prefix if present
+        const storagePath = pathParts
+          .filter(part => part !== '')
+          .slice(3) // Skip "/storage/v1/object/public/"
+          .join('/');
+
+        console.log('Extracted storage path:', storagePath);
+
+        // Try to create a signed URL with the extracted path
+        const { data: signedUrlData, error: signedUrlError } = await supabase
+          .storage
+          .from(pathParts[4]) // This should be "podcasts" bucket name
+          .createSignedUrl(storagePath, 3600);
+
+        if (!signedUrlError && signedUrlData) {
+          return res.redirect(signedUrlData.signedUrl);
+        }
+      } catch (e) {
+        console.error('Error extracting storage path from URL:', e);
+      }
+
+      // If we can't create a signed URL, try the original URL as a last resort
+      return res.redirect(podcast.file_url);
     }
 
     // For range requests, we need to download the file and stream it with the correct ranges
@@ -91,7 +118,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const totalSize = buffer.byteLength;
 
     // Parse the range header
-    const parts = range.replace(/bytes=/, '').split('-');
+    const range = req.headers.range;
+    const parts = range ? range.replace(/bytes=/, '').split('-') : ['0', `${totalSize - 1}`];
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
     const chunkSize = end - start + 1;

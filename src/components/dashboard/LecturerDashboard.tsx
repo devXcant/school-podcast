@@ -19,15 +19,30 @@ const LecturerDashboard: React.FC = () => {
     courses: [],
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const response = await fetch('/api/dashboard/lecturer-stats');
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
         const data = await response.json();
-        setStats(data);
+
+        // Ensure all required properties exist
+        setStats({
+          totalCourses: data.totalCourses || 0,
+          totalPodcasts: data.totalPodcasts || 0,
+          totalStudents: data.totalStudents || 0,
+          recentPodcasts: Array.isArray(data.recentPodcasts) ? data.recentPodcasts : [],
+          courses: Array.isArray(data.courses) ? data.courses : [],
+        });
       } catch (error) {
         console.error('Error fetching lecturer stats:', error);
+        setError('Failed to load dashboard data. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -37,7 +52,11 @@ const LecturerDashboard: React.FC = () => {
   }, []);
 
   if (loading) {
-    return <div>Loading dashboard stats...</div>;
+    return <div className="p-4 text-center">Loading dashboard stats...</div>;
+  }
+
+  if (error) {
+    return <div className="p-4 text-center text-red-500">{error}</div>;
   }
 
   return (
@@ -85,20 +104,20 @@ const LecturerDashboard: React.FC = () => {
             </Link>
           </div>
 
-          {stats.courses.length > 0 ? (
+          {stats.courses && stats.courses.length > 0 ? (
             <div className="space-y-4">
               {stats.courses.slice(0, 5).map((course) => (
-                <Link href={`/courses/${course._id}`} key={course._id} className="block">
+                <Link href={`/courses/${course._id}`} key={course._id || `course-${Math.random()}`} className="block">
                   <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
-                    <h3 className="font-medium">{course.title}</h3>
-                    <p className="text-sm text-gray-500">{course.code}</p>
+                    <h3 className="font-medium">{course.title || 'Untitled Course'}</h3>
+                    <p className="text-sm text-gray-500">{course.code || 'No code'}</p>
                     <div className="flex items-center mt-2">
                       <span className="text-xs text-gray-500">
-                        {course.students?.length || 0} Students
+                        {course.students && course.students.length ? course.students.length : 0} Students
                       </span>
                       <span className="mx-2 text-gray-300">•</span>
                       <span className="text-xs text-gray-500">
-                        {course.podcasts?.length || 0} Podcasts
+                        {course.podcasts && course.podcasts.length ? course.podcasts.length : 0} Podcasts
                       </span>
                     </div>
                   </div>
@@ -143,7 +162,7 @@ const LecturerDashboard: React.FC = () => {
           </Link>
         </div>
 
-        {stats.recentPodcasts.length > 0 ? (
+        {stats.recentPodcasts && stats.recentPodcasts.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -164,20 +183,20 @@ const LecturerDashboard: React.FC = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {stats.recentPodcasts.map((podcast) => (
-                  <tr key={podcast._id}>
+                  <tr key={podcast._id || `podcast-${Math.random()}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Link href={`/podcasts/${podcast._id}`} className="text-primary-600 hover:text-primary-700">
-                        {podcast.title}
+                        {podcast.title || 'Untitled Podcast'}
                       </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {podcast.course?.title || 'N/A'}
+                      {podcast.course && podcast.course.title ? podcast.course.title : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {podcast.viewCount}
+                      {podcast.viewCount || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(podcast.createdAt).toLocaleDateString()}
+                      {podcast.createdAt ? new Date(podcast.createdAt).toLocaleDateString() : 'N/A'}
                     </td>
                   </tr>
                 ))}

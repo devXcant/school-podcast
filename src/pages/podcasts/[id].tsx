@@ -1,64 +1,78 @@
 // pages/podcasts/[id].tsx
-import { useState, useEffect } from 'react';
-import { GetServerSideProps } from 'next';
-import { getSession, useSession } from 'next-auth/react';
-import Head from 'next/head';
-import { useRouter } from 'next/router';
-import Layout from '../../components/layout/Layout';
-import PodcastPlayer from '../../components/podcast/PodcastPlayer';
-import { IPodcast } from '../../types';
+import { useState, useEffect } from "react";
+import { GetServerSideProps } from "next";
+import { getSession, useSession } from "next-auth/react";
+import Head from "next/head";
+import { useRouter } from "next/router";
+import Layout from "../../components/layout/Layout";
+import PodcastPlayer from "../../components/podcast/PodcastPlayer";
+import { IPodcast } from "../../types";
 import {
   CalendarIcon,
   UserIcon,
   ClockIcon,
   BookOpenIcon,
   PencilIcon,
-  TrashIcon
-} from '@heroicons/react/24/outline';
-import Link from 'next/link';
-import Button from '@/src/components/ui/Button';
-import Modal from '@/src/components/ui/Modal';
+  TrashIcon,
+} from "@heroicons/react/24/outline";
+import Link from "next/link";
+import Button from "@/src/components/ui/Button";
+import Modal from "@/src/components/ui/Modal";
 
-const PodcastDetailPage = () => {
+const PodcastDetailPage = ({
+  initialPodcastId,
+}: {
+  initialPodcastId: string;
+}) => {
   const router = useRouter();
   const { id } = router.query;
   const { data: session } = useSession();
   const [podcast, setPodcast] = useState<IPodcast | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      fetchPodcast();
+    const podcastId = id || initialPodcastId;
+    console.log(
+      "Router query id:",
+      id,
+      "Initial podcast ID:",
+      initialPodcastId
+    ); // Debug log
+    if (podcastId && typeof podcastId === "string") {
+      fetchPodcast(podcastId);
     }
-  }, [id]);
+  }, [id, initialPodcastId]);
 
-  const fetchPodcast = async () => {
+  const fetchPodcast = async (podcastId: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/podcasts/${id}`);
+      setError("");
+      console.log("Fetching podcast with ID:", podcastId); // Debug log
+      const response = await fetch(`/api/podcasts/${podcastId}`);
       const data = await response.json();
+      console.log("API Response:", data); // Debug log
 
       if (data.success) {
         setPodcast(data.data);
       } else {
-        setError(data.message || 'Failed to load podcast');
+        setError(data.message || "Failed to load podcast");
       }
     } catch (error) {
-      setError('Failed to load podcast');
-      console.error('Error fetching podcast:', error);
+      setError("Failed to load podcast");
+      console.error("Error fetching podcast:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const formatTime = (seconds: number | undefined) => {
-    if (!seconds) return 'N/A';
+    if (!seconds) return "N/A";
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   const handleDelete = async () => {
@@ -67,20 +81,20 @@ const PodcastDetailPage = () => {
     try {
       setIsDeleting(true);
       const response = await fetch(`/api/podcasts/${podcast._id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       const data = await response.json();
 
       if (data.success) {
-        router.push('/podcasts');
+        router.push("/podcasts");
       } else {
-        setError(data.message || 'Failed to delete podcast');
+        setError(data.message || "Failed to delete podcast");
         setDeleteModalOpen(false);
       }
     } catch (error) {
-      setError('Failed to delete podcast');
-      console.error('Error deleting podcast:', error);
+      setError("Failed to delete podcast");
+      console.error("Error deleting podcast:", error);
       setDeleteModalOpen(false);
     } finally {
       setIsDeleting(false);
@@ -90,11 +104,12 @@ const PodcastDetailPage = () => {
   const canEdit = () => {
     if (!session || !podcast) return false;
 
-    const isAdmin = session.user.role === 'admin';
-    const isLecturer = session.user.role === 'lecturer';
-    const isCourseRep = session.user.role === 'course_rep';
-    const isCreator = podcast.recordedBy &&
-      typeof podcast.recordedBy === 'object' &&
+    const isAdmin = session.user.role === "admin";
+    const isLecturer = session.user.role === "lecturer";
+    const isCourseRep = session.user.role === "course_rep";
+    const isCreator =
+      podcast.recordedBy &&
+      typeof podcast.recordedBy === "object" &&
       podcast.recordedBy._id === session.user.id;
 
     return isAdmin || (isLecturer && isCreator) || (isCourseRep && isCreator);
@@ -114,10 +129,13 @@ const PodcastDetailPage = () => {
     return (
       <Layout>
         <div className="bg-red-50 border-l-4 border-red-500 p-4">
-          <p className="text-sm text-red-700">{error || 'Podcast not found'}</p>
+          <p className="text-sm text-red-700">{error || "Podcast not found"}</p>
         </div>
         <div className="mt-4">
-          <Link href="/podcasts" className="text-primary-600 hover:text-primary-700">
+          <Link
+            href="/podcasts"
+            className="text-primary-600 hover:text-primary-700"
+          >
             &larr; Back to podcasts
           </Link>
         </div>
@@ -132,7 +150,10 @@ const PodcastDetailPage = () => {
       </Head>
 
       <div className="mb-4">
-        <Link href="/podcasts" className="text-primary-600 hover:text-primary-700">
+        <Link
+          href="/podcasts"
+          className="text-primary-600 hover:text-primary-700"
+        >
           &larr; Back to podcasts
         </Link>
       </div>
@@ -177,7 +198,10 @@ const PodcastDetailPage = () => {
             <div className="flex items-center text-sm text-gray-500">
               <UserIcon className="h-5 w-5 mr-2" />
               <span>
-                By: {typeof podcast.recordedBy === 'object' ? podcast.recordedBy.name : 'Unknown'}
+                By:{" "}
+                {typeof podcast.recordedBy === "object"
+                  ? podcast.recordedBy.name
+                  : "Unknown"}
               </span>
             </div>
 
@@ -189,7 +213,10 @@ const PodcastDetailPage = () => {
             <div className="flex items-center text-sm text-gray-500">
               <BookOpenIcon className="h-5 w-5 mr-2" />
               <span>
-                Course: {typeof podcast.course === 'object' ? podcast.course.title : 'Unknown'}
+                Course:{" "}
+                {typeof podcast.course === "object"
+                  ? podcast.course.title
+                  : "Unknown"}
               </span>
             </div>
           </div>
@@ -205,7 +232,8 @@ const PodcastDetailPage = () => {
       >
         <div>
           <p className="mb-4">
-            Are you sure you want to delete this podcast? This action cannot be undone.
+            Are you sure you want to delete this podcast? This action cannot be
+            undone.
           </p>
           <div className="flex justify-end space-x-3">
             <Button
@@ -231,18 +259,21 @@ const PodcastDetailPage = () => {
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const session = await getSession(context);
+  const { id } = context.params || {};
 
   if (!session) {
     return {
       redirect: {
-        destination: '/auth/login',
+        destination: "/auth/login",
         permanent: false,
       },
     };
   }
 
   return {
-    props: {},
+    props: {
+      initialPodcastId: id || "",
+    },
   };
 };
 
