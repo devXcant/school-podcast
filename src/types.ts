@@ -36,6 +36,7 @@ export interface ICourse {
 }
 
 export interface IPodcast {
+  author: string;
   id: string;
   _id?: string;
   title: string;
